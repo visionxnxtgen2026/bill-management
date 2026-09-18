@@ -35,17 +35,36 @@ app.use(
 );
 app.use(express.json({ limit: '5mb' }));
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+// Serverless path normalization middleware:
+// If Vercel passed the serverless file path in req.url (e.g. /src/app.js?type=all or /api/index.js),
+// restore the actual intended path from request headers or query.
+app.use((req, res, next) => {
+  if (req.url.startsWith('/src/app.js') || req.url.startsWith('/api/index.js') || req.url.startsWith('/api/index')) {
+    const matchedPath = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || req.headers['x-now-route-matches'];
+    if (matchedPath && !matchedPath.startsWith('/src/app.js') && !matchedPath.startsWith('/api/index')) {
+      req.url = matchedPath;
+    }
+  }
+  next();
 });
 
-app.use('/api/products', productsRoutes);
-app.use('/api/suppliers', suppliersRoutes);
-app.use('/api/stock', stockRoutes);
-app.use('/api/bills', billsRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/reports', reportsRoutes);
-app.use('/api/settings', settingsRoutes);
+// Root & Health endpoints
+app.get(['/', '/health', '/api/health'], (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'StockPro API',
+    time: new Date().toISOString(),
+  });
+});
+
+// Dual-mount routes: supports both /api/<resource> and /<resource>
+app.use(['/api/products', '/products'], productsRoutes);
+app.use(['/api/suppliers', '/suppliers'], suppliersRoutes);
+app.use(['/api/stock', '/stock'], stockRoutes);
+app.use(['/api/bills', '/bills'], billsRoutes);
+app.use(['/api/dashboard', '/dashboard'], dashboardRoutes);
+app.use(['/api/reports', '/reports'], reportsRoutes);
+app.use(['/api/settings', '/settings'], settingsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
