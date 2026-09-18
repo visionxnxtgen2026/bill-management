@@ -1,16 +1,28 @@
 const { Pool } = require('pg');
+const { parse } = require('pg-connection-string');
 require('dotenv').config();
 
 function buildPoolConfig() {
-  const connectionString = process.env.DATABASE_URL;
+  const rawUrl =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.SUPABASE_DB_URL;
 
-  if (connectionString) {
+  if (rawUrl) {
+    const trimmed = rawUrl.trim().replace(/^["']|["']$/g, '');
+    const parsed = parse(trimmed);
+
     const isRemote =
-      !connectionString.includes('localhost') &&
-      !connectionString.includes('127.0.0.1');
+      parsed.host &&
+      !parsed.host.includes('localhost') &&
+      !parsed.host.includes('127.0.0.1');
 
     return {
-      connectionString,
+      host: parsed.host,
+      port: Number(parsed.port) || 5432,
+      user: parsed.user || 'postgres',
+      password: parsed.password || undefined,
+      database: parsed.database || 'postgres',
       ssl: isRemote ? { rejectUnauthorized: false } : false,
       max: Number(process.env.DB_POOL_MAX) || 10,
       idleTimeoutMillis: 30000,
@@ -18,61 +30,37 @@ function buildPoolConfig() {
     };
   }
 
+  const host = process.env.DB_HOST || '127.0.0.1';
+  const isRemote = !host.includes('localhost') && !host.includes('127.0.0.1');
+
   return {
-    host: process.env.DB_HOST || '127.0.0.1',
+    host,
     port: Number(process.env.DB_PORT) || 5432,
     database: process.env.DB_NAME || process.env.DB_DATABASE || 'stock_management',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD !== undefined ? String(process.env.DB_PASSWORD) : undefined,
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: isRemote || process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     max: Number(process.env.DB_POOL_MAX) || 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
   };
 }
 
-/**
- * Returns a masked connection string for safe diagnostic logging.
- */
 function getMaskedConnectionInfo() {
-  const url = process.env.DATABASE_URL;
-  if (url) {
-    try {
-      const parsed = new URL(url);
-      const host = parsed.hostname;
-      const port = parsed.port || '5432';
-      const db = parsed.pathname.replace(/^\//, '');
-      const user = parsed.username || 'postgres';
-      return `postgres://${user}:***@${host}:${port}/${db}`;
-    } catch {
-      return 'postgres://***:***@[configured-database]';
-    }
-  }
-  const host = process.env.DB_HOST || '127.0.0.1';
-  const port = process.env.DB_PORT || 5432;
-  const db = process.env.DB_NAME || 'stock_management';
-  const user = process.env.DB_USER || 'postgres';
-  return `postgres://${user}:***@${host}:${port}/${db}`;
+  const cfg = buildPoolConfig();
+  return `postgres://${cfg.user}:***@${cfg.host}:${cfg.port}/${cfg.database}`;
 }
 
 const pool = new Pool(buildPoolConfig());
 
 pool.on('error', (err) => {
-  // A background/idle client error should never crash the whole process or expose secrets.
   console.error('[DATABASE ERROR] Unexpected PostgreSQL client error:', err.message);
 });
 
-/**
- * Run a single parameterized query.
- */
 async function query(text, params) {
   return pool.query(text, params);
 }
 
-/**
- * Run a callback inside a PostgreSQL transaction.
- * Automatically BEGIN / COMMIT / ROLLBACK.
- */
 async function withTransaction(callback) {
   const client = await pool.connect();
   try {
