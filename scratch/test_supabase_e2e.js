@@ -54,11 +54,12 @@ async function runTest() {
   const supplierId = supRes.data.id;
 
   // 5. Create Product
+  const sku = 'MB-TP-L14-' + Date.now();
   const prodRes = await request(
     { hostname: 'localhost', port: 5000, path: '/api/products', method: 'POST', headers: { 'Content-Type': 'application/json' } },
     {
       name: 'Lenovo ThinkPad Motherboard L14 Gen 2',
-      sku: 'MB-TP-L14-G2',
+      sku,
       category: 'Electronics',
       unit: 'pcs',
       hsn_code: '8473',
@@ -144,7 +145,7 @@ async function runTest() {
     { hostname: 'localhost', port: 5000, path: `/api/products/${productId}`, method: 'PUT', headers: { 'Content-Type': 'application/json' } },
     {
       name: 'Lenovo ThinkPad Motherboard L14 Gen 2 (Original OEM)',
-      sku: 'MB-TP-L14-G2',
+      sku,
       category: 'Electronics',
       unit: 'pcs',
       purchase_price: 5300,
